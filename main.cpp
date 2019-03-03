@@ -1,60 +1,64 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <cds/init.h>       // for cds::Initialize and cds::Terminate
 #include <cds/gc/hp.h>
 #include <atomic>
 
 
-typedef struct concurrentStack
+typedef struct LockFreeStack
 {
 	int data;
-	struct concurrentStack* next;
-} cStack;
+	std::atomic<struct LockFreeStack*> next;
+} LFStack;
 
-
-void init (cStack* head)
+/*void init (LFStack* head)
 {
-	head = NULL;
-}
-cStack* create_stack ()
-{ //initializes the stack
-	
-	cStack* newStack = (cStack*)malloc(sizeof(cStack));
+	head = nullptr;
+}*/
+
+LFStack* create_stack ()
+{
+	auto* newStack = new LFStack;
 	
 	newStack->data = 0;
-	newStack->next = NULL;
+	newStack->next = nullptr;
 	
 	return newStack;
 }
 
-
-cStack* push (cStack* head, int data)
+LFStack* push (LFStack* head, int data)
 {
-	cStack* tmp = (cStack*)malloc(sizeof(cStack));
-	if(tmp == NULL)
-	{
-		exit(0);
-	}
+	auto* tmp = new LFStack;            //@@@@
+	if (!tmp) exit(0);                  //@@@@
+	
+	LFStack* top = head->next.load ();
+	tmp->next.store (top);
+	
 	tmp->data = data;
-	tmp->next = head;
-	head = tmp;
+	//tmp->next = head;
+	//head = tmp;
+	while (!head->next.compare_exchange_weak (top, tmp))
+	{
+		tmp->next.store(top);
+	}
+	
 	return head;
 }
 
-cStack* pop (cStack *head, int *element)
+LFStack* pop (LFStack *head, int *element)
 {
-	cStack* tmp = head;
+	LFStack* tmp = head;
 	*element = head->data;
 	head = head->next;
 	free(tmp);
 	return head;
 }
 
-void display (cStack* head)
+void display (LFStack* head)
 {
-	cStack *current;
+	LFStack *current;
 	current = head;
-	if(current!= NULL)
+	if (current)
 	{
 		printf("Stack: ");
 		do
@@ -62,7 +66,7 @@ void display (cStack* head)
 			printf("%d ",current->data);
 			current = current->next;
 		}
-		while (current!= NULL);
+		while (current!= nullptr);
 		printf("\n");
 	}
 	else
@@ -107,7 +111,7 @@ int main ()
 	
 	
 	int i;
-	cStack *s = create_stack ();
+	LFStack *s = create_stack ();
 	
 	for (i = 0; i < 300; i++)
 	{
@@ -118,6 +122,7 @@ int main ()
 	{
 		int returnData;
 		s = pop (s, &returnData);
+		//display (s);
 		printf("%d ", returnData);
 	}
 	
