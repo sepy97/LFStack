@@ -32,25 +32,36 @@ LFStack* push (LFStack* head, int data)
 	if (!tmp) exit(0);                  //@@@@
 	
 	LFStack* top = head->next.load ();
-	tmp->next.store (top);
 	
 	tmp->data = data;
+	tmp->next.store (top);
 	//tmp->next = head;
 	//head = tmp;
-	while (!head->next.compare_exchange_weak (top, tmp))
+	while (!head->next.compare_exchange_weak (top, tmp)) //ВИДИМО ЗДЕСЬ НАДО НЕ head->next, А head.compare....
 	{
 		tmp->next.store(top);
 	}
 	
+	free (tmp);
 	return head;
 }
 
 LFStack* pop (LFStack *head, int *element)
 {
-	LFStack* tmp = head;
-	*element = head->data;
-	head = head->next;
-	free(tmp);
+	typename cds::gc::HP::Guard guard;
+	
+	LFStack* tmp = guard.protect (head->next); //head вместо head->next;
+	LFStack* top = tmp->next.load ();
+	
+	*element = top->data;               //@@@@ по идее надо брать из tmp, косяки в push функции
+	
+	//head = top;
+	while (!head->next.compare_exchange_weak(tmp, top)) //ВИДИМО ЗДЕСЬ НАДО НЕ head->next, А head.compare....
+	{
+		top = tmp->next.load();
+	}
+	
+	guard.release (); //наверное, чтобы перестать защищать head
 	return head;
 }
 
@@ -113,17 +124,17 @@ int main ()
 	int i;
 	LFStack *s = create_stack ();
 	
-	for (i = 0; i < 300; i++)
+	for (i = 0; i < 3; i++)
 	{
 		s = push(s, i);
-		//display (s);
+		display (s);
 	}
-	for (i = 0; i < 300; i++)
+	for (i = 0; i < 3; i++)
 	{
 		int returnData;
 		s = pop (s, &returnData);
-		//display (s);
-		printf("%d ", returnData);
+		display (s);
+		printf("%d \n", returnData);
 	}
 	
 }
