@@ -3,18 +3,16 @@
 #include <cds/init.h>       // for cds::Initialize and cds::Terminate
 #include <cds/gc/hp.h>
 #include <atomic>
+#include <thread>
 
+#define MAX_THREAD_NUM 100
+#define TEST_VOL 100000
 
 typedef struct LockFreeStack
 {
 	int data;
 	std::atomic<struct LockFreeStack*> next;
 } LFStack;
-
-/*void init (LFStack* head)
-{
-	head = nullptr;
-}*/
 
 LFStack* create_stack ()
 {
@@ -62,8 +60,20 @@ LFStack* pop (LFStack *head, int *element)
 	}
 	
 	guard.release (); //наверное, чтобы перестать защищать head
-	return head;
+	return head;        //@@@@
 }
+
+int myThreadEntryPoint (void *)
+{
+	// Attach the thread to libcds infrastructure
+	cds::threading::Manager::attachThread();
+	// Now you can use HP-based containers in the thread
+	//...
+	// Detach thread when terminating
+	cds::threading::Manager::detachThread();
+}
+
+bool empty();//
 
 void display (LFStack* head)
 {
@@ -87,14 +97,41 @@ void display (LFStack* head)
 	
 }
 
-int myThreadEntryPoint(void *)
+void testPush (LFStack* toTest)
 {
-	// Attach the thread to libcds infrastructure
-	cds::threading::Manager::attachThread();
-	// Now you can use HP-based containers in the thread
-	//...
-	// Detach thread when terminating
-	cds::threading::Manager::detachThread();
+	for (int i = 0; i < TEST_VOL; i++)
+	{
+		toTest = push (toTest, rand()%MAX_THREAD_NUM);
+	}
+}
+
+void testPop (LFStack* toTest)
+{
+	int value;
+	for (int i = 0; i < TEST_VOL; i++)
+	{
+		toTest = pop (toTest, &value);
+	}
+}
+
+void testStack (LFStack* toTest)
+{
+	std::thread thr[MAX_THREAD_NUM];
+	for (int i = 0; i < MAX_THREAD_NUM; i++)
+	{
+		thr[i] = std::thread (testPush, toTest);
+		//myThreadEntryPoint (thr[i]);
+	}
+	
+	for (int i = 0; i < MAX_THREAD_NUM; i++)
+	{
+		thr[i].join ();
+	}
+	
+	for (int i = 0; i < MAX_THREAD_NUM; i++)
+	{
+		thr[i] = std::thread (testPop, toTest);
+	}
 }
 
 int main ()
@@ -115,26 +152,28 @@ int main ()
 		// Всё, libcds готова к использованию
 		// Далее располагается ваш код
 		//...
+	
+		int i;
+		LFStack *s = create_stack ();
+		
+		testStack (s);
+		/*for (i = 0; i < 3; i++)
+		{
+			s = push(s, i);
+			//display (s);
+		}
+		for (i = 0; i < 3; i++)
+		{
+			int returnData;
+			s = pop (s, &returnData);
+			//display (s);
+			printf("%d \n", returnData);
+		}*/
+		
 	}
 	
 	// Завершаем libcds
 	cds::Terminate() ;
 	
-	
-	int i;
-	LFStack *s = create_stack ();
-	
-	for (i = 0; i < 3; i++)
-	{
-		s = push(s, i);
-		display (s);
-	}
-	for (i = 0; i < 3; i++)
-	{
-		int returnData;
-		s = pop (s, &returnData);
-		display (s);
-		printf("%d \n", returnData);
-	}
 	
 }
