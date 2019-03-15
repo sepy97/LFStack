@@ -8,6 +8,21 @@
 #define MAX_THREAD_NUM 100
 #define TEST_VOL 100000
 
+class FastRandom {
+private:
+	unsigned long long rnd;
+public:
+	FastRandom(unsigned long long seed) {
+		rnd = seed;
+	}
+	unsigned long long rand() {
+		rnd ^= rnd << 21;
+		rnd ^= rnd >> 35;
+		rnd ^= rnd << 4;
+		return rnd;
+	}
+};
+
 typedef struct LockFreeStack
 {
 	int data;
@@ -99,9 +114,11 @@ void display (LFStack* head)
 
 void testPush (LFStack* toTest)
 {
+	FastRandom* ran = new FastRandom (rand());
+	
 	for (int i = 0; i < TEST_VOL; i++)
 	{
-		toTest = push (toTest, rand()%MAX_THREAD_NUM);
+		toTest = push (toTest, ran->rand()%MAX_THREAD_NUM);
 	}
 }
 
@@ -136,7 +153,6 @@ void testStack (LFStack* toTest)
 
 int main ()
 {
-	
 	// Инициализируем libcds
 	cds::Initialize() ;
 	
@@ -169,6 +185,8 @@ int main ()
 			//display (s);
 			printf("%d \n", returnData);
 		}*/
+		
+		
 		
 	}
 	
