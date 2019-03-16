@@ -23,13 +23,74 @@ public:
 	}
 };
 
-typedef struct LockFreeStack
+/*struct LockFreeStack
 {
 	int data;
 	std::atomic<struct LockFreeStack*> next;
-} LFStack;
+};*/
 
-LFStack* create_stack ()
+struct LockFreeStack
+{
+	int data;
+	LockFreeStack* next;
+	LockFreeStack(const int& data) : data(data), next(nullptr) {}
+};
+
+class LFStack
+{
+	std::atomic<LockFreeStack*> head;
+	
+public:
+	void push (const int& data)
+	{
+		LockFreeStack* newStack = new LockFreeStack (data);
+		newStack->next = head.load ();
+		
+		while (!head.compare_exchange_weak (newStack->next, newStack))
+			; // the body of the loop is empty
+	}
+	
+	LockFreeStack* pop ()
+	{
+		typename cds::gc::HP::Guard guard;
+		
+		LockFreeStack* newStack = guard.protect (head); //head вместо head->next;
+		//LFStack* top = tmp->next.load ();
+		
+		LockFreeStack* poppedNode = new LockFreeStack (0);
+		poppedNode->data = newStack->data;
+		poppedNode->next = NULL;
+		//*element = top->data;               //@@@@ по идее надо брать из tmp, косяки в push функции
+		
+		//head = top;
+		while (!head.compare_exchange_weak (newStack, newStack->next)) //ВИДИМО ЗДЕСЬ НАДО НЕ head->next, А head.compare....
+		{}
+		
+		guard.release (); //наверное, чтобы перестать защищать head
+		return poppedNode;        //@@@@
+	}
+	
+	void display ()
+	{
+		//нужна проверка this на empty!!!
+		if (this->head == NULL)
+		{
+			printf ("Stack: EMPTY!\n");
+			return;
+		}
+		LockFreeStack current = *this->head.load();
+		printf ("Stack: ");
+		while (true)
+		{
+			printf ("%d ", current.data);
+			if (current.next == NULL) break;
+			current = *current.next;
+		}
+		printf ("\n");
+	}
+};
+
+/*LFStack* create_stack ()
 {
 	auto* newStack = new LFStack;
 	
@@ -37,9 +98,9 @@ LFStack* create_stack ()
 	newStack->next = nullptr;
 	
 	return newStack;
-}
+}*/
 
-LFStack* push (LFStack* head, int data)
+/*LFStack* push (LFStack* head, int data)
 {
 	auto* tmp = new LFStack;            //@@@@
 	if (!tmp) exit(0);                  //@@@@
@@ -57,9 +118,9 @@ LFStack* push (LFStack* head, int data)
 	
 	free (tmp);
 	return head;
-}
+}*/
 
-LFStack* pop (LFStack *head, int *element)
+/*LFStack* pop (LFStack *head, int *element)
 {
 	typename cds::gc::HP::Guard guard;
 	
@@ -76,7 +137,7 @@ LFStack* pop (LFStack *head, int *element)
 	
 	guard.release (); //наверное, чтобы перестать защищать head
 	return head;        //@@@@
-}
+}*/
 
 int myThreadEntryPoint (void *)
 {
@@ -90,7 +151,7 @@ int myThreadEntryPoint (void *)
 
 bool empty();//
 
-void display (LFStack* head)
+/*void display (LFStack* head)
 {
 	LFStack *current;
 	current = head;
@@ -110,7 +171,7 @@ void display (LFStack* head)
 		printf("The Stack is empty\n");
 	}
 	
-}
+}*/
 
 void testPush (LFStack* toTest)
 {
@@ -118,7 +179,8 @@ void testPush (LFStack* toTest)
 	
 	for (int i = 0; i < TEST_VOL; i++)
 	{
-		toTest = push (toTest, ran->rand()%MAX_THREAD_NUM);
+		//toTest = push (toTest, ran->rand()%MAX_THREAD_NUM);
+		toTest->push (ran->rand()%MAX_THREAD_NUM);
 	}
 }
 
@@ -127,7 +189,7 @@ void testPop (LFStack* toTest)
 	int value;
 	for (int i = 0; i < TEST_VOL; i++)
 	{
-		toTest = pop (toTest, &value);
+		toTest->pop ();// = pop (toTest, &value);
 	}
 }
 
@@ -170,20 +232,20 @@ int main ()
 		//...
 	
 		int i;
-		LFStack *s = create_stack ();
+		//LFStack *s = create_stack ();
+		LFStack s;
 		
-		testStack (s);
+		testStack (&s);
 		/*for (i = 0; i < 3; i++)
 		{
-			s = push(s, i);
-			//display (s);
+			s.push (i);// = push(s, i);
+			s.display ();//display (s);
 		}
 		for (i = 0; i < 3; i++)
 		{
-			int returnData;
-			s = pop (s, &returnData);
-			//display (s);
-			printf("%d \n", returnData);
+			LockFreeStack* returnData = s.pop ();
+			s.display ();//display (s);
+			printf("%d \n", returnData->data);
 		}*/
 		
 		
