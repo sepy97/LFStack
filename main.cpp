@@ -104,6 +104,11 @@ public:
 		printf ("\n");
 	}
 	
+	bool isEmpty()
+	{
+		return (this->head == NULL);
+		
+	}
 };
 
 /*LFStack* create_stack ()
