@@ -4,12 +4,14 @@
 #include <cds/gc/hp.h>
 #include <atomic>
 #include <thread>
+#include <x86intrin.h>
 
-#define MAX_THREAD_NUM 100
-#define TEST_VOL 100
+#define INIT_PUSH 10000
+#define MAX_THREAD_NUM 10
+#define MAX_VOLUME 10000000
 
 //std::atomic<int> toCheck;
-std::atomic<int> poppedArray [MAX_THREAD_NUM*TEST_VOL];
+std::atomic<int> poppedArray [MAX_THREAD_NUM*MAX_VOLUME];
 
 class FastRandom {
 private:
@@ -25,12 +27,6 @@ public:
 		return rnd;
 	}
 };
-
-/*struct LockFreeStack
-{
-	int data;
-	std::atomic<struct LockFreeStack*> next;
-};*/
 
 struct LockFreeStack
 {
@@ -57,7 +53,7 @@ public:
 	{
 		if (head == nullptr)
 		{
-			printf ("Stack if EMPTY!!! You can not pop from it!'n");
+			printf ("Stack if EMPTY!!! You can not pop from it! \n");
 			return 0;
 		}
 		try
@@ -111,55 +107,6 @@ public:
 	}
 };
 
-/*LFStack* create_stack ()
-{
-	auto* newStack = new LFStack;
-	
-	newStack->data = 0;
-	newStack->next = nullptr;
-	
-	return newStack;
-}*/
-
-/*LFStack* push (LFStack* head, int data)
-{
-	auto* tmp = new LFStack;            //@@@@
-	if (!tmp) exit(0);                  //@@@@
-	
-	LFStack* top = head->next.load ();
-	
-	tmp->data = data;
-	tmp->next.store (top);
-	//tmp->next = head;
-	//head = tmp;
-	while (!head->next.compare_exchange_weak (top, tmp)) //ВИДИМО ЗДЕСЬ НАДО НЕ head->next, А head.compare....
-	{
-		tmp->next.store(top);
-	}
-	
-	free (tmp);
-	return head;
-}*/
-
-/*LFStack* pop (LFStack *head, int *element)
-{
-	typename cds::gc::HP::Guard guard;
-	
-	LFStack* tmp = guard.protect (head->next); //head вместо head->next;
-	LFStack* top = tmp->next.load ();
-	
-	*element = top->data;               //@@@@ по идее надо брать из tmp, косяки в push функции
-	
-	//head = top;
-	while (!head->next.compare_exchange_weak(tmp, top)) //ВИДИМО ЗДЕСЬ НАДО НЕ head->next, А head.compare....
-	{
-		top = tmp->next.load();
-	}
-	
-	guard.release (); //наверное, чтобы перестать защищать head
-	return head;        //@@@@
-}*/
-
 int myThreadEntryPoint (void *)
 {
 	// Attach the thread to libcds infrastructure
@@ -172,28 +119,7 @@ int myThreadEntryPoint (void *)
 
 bool empty();//
 
-/*void display (LFStack* head)
-{
-	LFStack *current;
-	current = head;
-	if (current)
-	{
-		printf("Stack: ");
-		do
-		{
-			printf("%d ",current->data);
-			current = current->next;
-		}
-		while (current!= nullptr);
-		printf("\n");
-	}
-	else
-	{
-		printf("The Stack is empty\n");
-	}
-	
-}*/
-
+/*
 void testPush (LFStack* toTest, int checkData)
 {
 	if (!cds::threading::Manager::isThreadAttached ())      //@@@@
@@ -203,7 +129,7 @@ void testPush (LFStack* toTest, int checkData)
 	
 	//FastRandom* ran = new FastRandom (rand());
 	
-	for (int i = 0; i < TEST_VOL; i++)
+	for (int i = 0; i < MAX_VOLUME; i++)
 	{
 		//toTest = push (toTest, ran->rand()%MAX_THREAD_NUM);
 		toTest->push (checkData+i);//ran->rand()%MAX_THREAD_NUM);
@@ -223,7 +149,7 @@ void testPop (LFStack* toTest)
 	}
 	
 	int value;
-	for (int i = 0; i < TEST_VOL; i++)
+	for (int i = 0; i < MAX_VOLUME; i++)
 	{
 		LockFreeStack* resultNode = toTest->pop ();
 		//int result = resultNode->data;
@@ -244,7 +170,7 @@ void testStack (LFStack* toTest)
 	std::thread thr[MAX_THREAD_NUM];
 	for (int i = 0; i < MAX_THREAD_NUM; i++)
 	{
-		thr[i] = std::thread (testPush, toTest, i*TEST_VOL);
+		thr[i] = std::thread (testPush, toTest, i*MAX_VOLUME);
 		//myThreadEntryPoint (thr[i]);
 	}
 	
@@ -253,18 +179,11 @@ void testStack (LFStack* toTest)
 		thr[i].join ();
 	}
 	
-	/*toTest->display ();
-	toTest->display ();
-	toTest->display ();*/
 	
-	for (int i = 0; i < MAX_THREAD_NUM*TEST_VOL; i++)
+	for (int i = 0; i < MAX_THREAD_NUM*MAX_VOLUME; i++)
 	{
 		poppedArray[i].store (0);// = false;
 	}
-	
-	
-	/*toTest->display ();
-	toTest->display ();*/
 	
 	for (int i = 0; i < MAX_THREAD_NUM; i++)
 	{
@@ -277,7 +196,7 @@ void testStack (LFStack* toTest)
 	}
 	
 	bool failure = false;
-	for (int i = 0; i < MAX_THREAD_NUM*TEST_VOL; i++)
+	for (int i = 0; i < MAX_THREAD_NUM*MAX_VOLUME; i++)
 	{
 		if (!poppedArray[i].load())
 		{
@@ -288,11 +207,51 @@ void testStack (LFStack* toTest)
 	}
 	
 	if (!failure) printf ("Test passed successfully!\n");
+}
+ */
+
+void testStack (LFStack* toTest, int volume)
+{
+	if (!cds::threading::Manager::isThreadAttached ())      //@@@@
+	{
+		cds::threading::Manager::attachThread ();
+	}
 	
+	for (int i = 0; i < volume; i++)
+	{
+		int pushOrPop = rand()%2;
+		if (pushOrPop)
+		{
+			toTest->push (rand()%volume);
+		}
+		else
+		{
+			toTest->pop ();
+		}
+	}
+	
+	if (cds::threading::Manager::isThreadAttached ())      //@@@@
+	{
+		cds::threading::Manager::detachThread ();
+	}
 }
 
-int main ()
+int main (int argc, char** argv)
 {
+	srand (time (NULL));
+	
+	int maxThreads = 0;
+	
+	if (argc > 1)
+	{
+		maxThreads = atoi(argv[1]);
+	}
+	else
+	{
+		maxThreads = 1;
+		//printf ("no arguments :( \n");
+		//return 0;
+	}
 	
 	//cds::gc::hp::GarbageCollector::Construct( stack_type::c_nHazardPtrCount, 1, 16 );
 	
@@ -301,7 +260,7 @@ int main ()
 	
 	{
 		// Инициализируем Hazard Pointer синглтон
-		cds::gc::HP hpGC (TEST_VOL*MAX_THREAD_NUM, MAX_THREAD_NUM); //num of hpointers
+		cds::gc::HP hpGC (INIT_PUSH + MAX_VOLUME, maxThreads); //num of hpointers
 		//cds::gc::hp ::GarbageCollector::construct (1, 16 );//hpGC ;    @@@@@@
 		
 		// Если main thread использует lock-free контейнеры
@@ -313,23 +272,28 @@ int main ()
 		// Далее располагается ваш код
 		//...
 	
-		int i;
-		//LFStack *s = create_stack ();
 		LFStack s;
 		
-		testStack (&s);
-		/*for (i = 0; i < 3; i++)
-		{
-			s.push (i);// = push(s, i);
-			s.display ();//display (s);
-		}
-		for (i = 0; i < 3; i++)
-		{
-			LockFreeStack* returnData = s.pop ();
-			s.display ();//display (s);
-			printf("%d \n", returnData->data);
-		}*/
+		std::thread thr[maxThreads];
 		
+		for (int i = 0; i < INIT_PUSH; i++)
+		{
+			s.push (rand() % INIT_PUSH);
+		}
+		
+		uint64_t tick = __rdtsc ()/100000;
+		for (int i = 0; i < maxThreads; i++)
+		{
+			thr[i] = std::thread (testStack, &s, MAX_VOLUME/maxThreads);
+		}
+		
+		for (int i = 0; i < maxThreads; i++)
+		{
+			thr[i].join ();
+		}
+		
+		uint64_t tick2 = __rdtsc ()/100000;
+		printf ("%llu\n", tick2 - tick);
 		
 	
 	}
