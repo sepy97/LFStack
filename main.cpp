@@ -17,7 +17,7 @@ class FastRandom {
 private:
 	unsigned long long rnd;
 public:
-	FastRandom(unsigned long long seed) {
+	FastRandom(unsigned long long seed) { //time + threadnum
 		rnd = seed;
 	}
 	unsigned long long rand() {
@@ -210,19 +210,19 @@ void testStack (LFStack* toTest)
 }
  */
 
-void testStack (LFStack* toTest, int volume)
+void testStack (LFStack* toTest, const int volume, int threadNum)
 {
 	if (!cds::threading::Manager::isThreadAttached ())      //@@@@
 	{
 		cds::threading::Manager::attachThread ();
 	}
-	
+	FastRandom* ran = new FastRandom (time(NULL) + threadNum);
 	for (int i = 0; i < volume; i++)
 	{
-		int pushOrPop = rand()%2;
+		int pushOrPop = i%2;//rand()%2;
 		if (pushOrPop)
 		{
-			toTest->push (rand()%volume);
+			toTest->push (ran->rand()%volume);
 		}
 		else
 		{
@@ -238,8 +238,6 @@ void testStack (LFStack* toTest, int volume)
 
 int main (int argc, char** argv)
 {
-	srand (time (NULL));
-	
 	int maxThreads = 0;
 	
 	if (argc > 1)
@@ -276,15 +274,17 @@ int main (int argc, char** argv)
 		
 		std::thread thr[maxThreads];
 		
+		FastRandom* ran = new FastRandom (__rdtsc ()/1000000000);
+		
 		for (int i = 0; i < INIT_PUSH; i++)
 		{
-			s.push (rand() % INIT_PUSH);
+			s.push (ran->rand() % INIT_PUSH);
 		}
 		
 		uint64_t tick = __rdtsc ()/100000;
 		for (int i = 0; i < maxThreads; i++)
 		{
-			thr[i] = std::thread (testStack, &s, MAX_VOLUME/maxThreads);
+			thr[i] = std::thread (testStack, &s, MAX_VOLUME/maxThreads, i);
 		}
 		
 		for (int i = 0; i < maxThreads; i++)
